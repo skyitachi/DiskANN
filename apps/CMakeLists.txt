@@ -40,3 +40,6 @@ if (NOT MSVC)
             RUNTIME
     )
 endif()
+
+add_executable(debug_memory_index diskann_memory_index_build_debug.cpp)
+target_link_libraries(debug_memory_index ${PROJECT_NAME} ${DISKANN_TOOLS_TCMALLOC_LINK_OPTIONS} Boost::program_options)
