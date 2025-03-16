@@ -802,6 +802,7 @@ std::pair<uint32_t, uint32_t> Index<T, TagT, LabelT>::iterate_to_fixed_point(
     std::vector<float> &dist_scratch = scratch->dist_scratch();
     assert(id_scratch.size() == 0);
 
+    // 需要查询的向量，相当于GreedySearch中的Xq
     T *aligned_query = scratch->aligned_query();
 
     float *pq_dists = nullptr;
@@ -839,7 +840,8 @@ std::pair<uint32_t, uint32_t> Index<T, TagT, LabelT>::iterate_to_fixed_point(
         _pq_data_store->get_distance(scratch->aligned_query(), ids, dists_out, scratch);
     };
 
-    // Initialize the candidate pool with starting points
+    // Initialize the candidate pool with starting pointjjs
+    // init_ids 默认是从_start开始 整个向量集合的中心点开始(由calculate_entry_point计算得来)
     for (auto id : init_ids)
     {
         if (id >= _max_points + _num_frozen_pts)
@@ -987,6 +989,7 @@ void Index<T, TagT, LabelT>::search_for_point_and_prune(int location, uint32_t L
     if (!use_filter)
     {
         _data_store->get_vector(location, scratch->aligned_query());
+        // GreedySearch 算法
         iterate_to_fixed_point(scratch, Lindex, init_ids, false, unused_filter_label, false);
     }
     else
@@ -1046,13 +1049,14 @@ void Index<T, TagT, LabelT>::search_for_point_and_prune(int location, uint32_t L
     {
         throw diskann::ANNException("ERROR: non-empty pruned_list passed", -1, __FUNCSIG__, __FILE__, __LINE__);
     }
-
+    // RobustPrune 算法
     prune_neighbors(location, pool, pruned_list, scratch);
 
     assert(!pruned_list.empty());
     assert(_graph_store->get_total_points() == _max_points + _num_frozen_pts);
 }
 
+    // RobustPrune 算法的实现
 template <typename T, typename TagT, typename LabelT>
 void Index<T, TagT, LabelT>::occlude_list(const uint32_t location, std::vector<Neighbor> &pool, const float alpha,
                                           const uint32_t degree, const uint32_t maxc, std::vector<uint32_t> &result,
@@ -1298,7 +1302,8 @@ template <typename T, typename TagT, typename LabelT> void Index<T, TagT, LabelT
 
     diskann::Timer link_timer;
 
-#pragma omp parallel for schedule(dynamic, 2048)
+    // just for debug
+//#pragma omp parallel for schedule(dynamic, 2048)
     for (int64_t node_ctr = 0; node_ctr < (int64_t)(visit_order.size()); node_ctr++)
     {
         auto node = visit_order[node_ctr];
@@ -1319,11 +1324,11 @@ template <typename T, typename TagT, typename LabelT> void Index<T, TagT, LabelT
 
         {
             LockGuard guard(_locks[node]);
-
+            // 插入该node找到的邻居
             _graph_store->set_neighbours(node, pruned_list);
             assert(_graph_store->get_neighbours((location_t)node).size() <= _indexingRange);
         }
-
+        //  插入反向边
         inter_insert(node, pruned_list, scratch);
 
         if (node_ctr % 100000 == 0)
@@ -1337,10 +1342,12 @@ template <typename T, typename TagT, typename LabelT> void Index<T, TagT, LabelT
     {
         diskann::cout << "Starting final cleanup.." << std::flush;
     }
-#pragma omp parallel for schedule(dynamic, 2048)
+    // just for debug
+//#pragma omp parallel for schedule(dynamic, 2048)
     for (int64_t node_ctr = 0; node_ctr < (int64_t)(visit_order.size()); node_ctr++)
     {
         auto node = visit_order[node_ctr];
+        // 为什么还会有这一步
         if (_graph_store->get_neighbours((location_t)node).size() > _indexingRange)
         {
             ScratchStoreManager<InMemQueryScratch<T>> manager(_query_scratch);

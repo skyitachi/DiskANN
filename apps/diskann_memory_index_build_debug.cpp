@@ -3,6 +3,7 @@
 //
 #include <omp.h>
 #include <cstring>
+#include <filesystem>
 #include <boost/program_options.hpp>
 
 #include "index.h"
@@ -56,7 +57,27 @@ int main() {
     auto index = index_factory.create_instance();
 
     std::string data_path = "test_data/random_128d_10k_vectors.bin";
-    index->build(data_path, data_num, ifp);
+    std::string index_path = "test_data/random_128d_10k_vectors.index";
+    if (std::filesystem::exists(index_path)) {
+        index->load(index_path.c_str(), num_threads, L);
+    } else {
+        index->build(data_path, data_num, ifp);
+        index->save(index_path.c_str(), false);
+    }
+
+    std::ifstream ifs(data_path, std::ios::binary);
+    size_t offset = 8;
+    ifs.seekg(offset, std::ios::beg);
+    float query[128];
+    ifs.read(reinterpret_cast<char*>(query), sizeof(float) * 128);
+    int k = 5;
+    uint64_t ids[k];
+    float distances[k];
+    auto [r1, r2] = index->search(query, k, L, ids, distances);
+    for (int i = 0; i < k; i++) {
+        std::cout <<"closest point: " << ids[i] << ", distance: "<< distances[i] << std::endl;
+    }
+    std::cout << "r1: " << r1 << ", r2: " << r2 << std::endl;
     return 0;
 }
 
